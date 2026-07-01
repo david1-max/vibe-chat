@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VibeChat - Unified Messaging & Calling</title>
+  <!-- Google Fonts: Outfit and Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Lucide Icons for premium UI -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Socket.io Client -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <!-- App Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+  <!-- PWA Manifest & Mobile Styling -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body>
+
+  <!-- Background Animated Cyber Glows -->
+  <div class="cyber-glow bg-glow-1"></div>
+  <div class="cyber-glow bg-glow-2"></div>
+
+  <!-- Main Container -->
+  <div class="app-container">
+    
+    <!-- Phone Mockup Container (Desktop Only, automatically scales on Mobile) -->
+    <div class="phone-wrapper">
+      <div class="phone-inner">
+        <!-- Phone Camera Notch / Status bar simulation -->
+        <div class="phone-notch"></div>
+        <div class="phone-status-bar">
+          <span class="status-time">12:30</span>
+          <div class="status-icons">
+            <i data-lucide="signal" class="mini-icon"></i>
+            <i data-lucide="wifi" class="mini-icon"></i>
+            <i data-lucide="battery" class="mini-icon"></i>
+          </div>
+        </div>
+
+        <!-- APP CONTENT -->
+
+        <!-- 1. LOGIN SCREEN -->
+        <div id="login-screen" class="screen active">
+          <div class="login-card">
+            <div class="brand">
+              <div class="brand-logo">
+                <i data-lucide="message-square" class="logo-icon"></i>
+              </div>
+              <h1>VibeChat</h1>
+              <p>Secure Video & Real-time Messaging</p>
+            </div>
+            
+            <div class="input-group">
+              <label for="username-input">Choose your @handle</label>
+              <div class="input-wrapper">
+                <i data-lucide="at-sign" class="field-icon"></i>
+                <input type="text" id="username-input" placeholder="nickname" autocomplete="off">
+              </div>
+              <span class="input-error" id="login-error">Username already taken or invalid.</span>
+            </div>
+
+            <button id="login-btn" class="glow-btn">
+              <span>Enter Space</span>
+              <i data-lucide="arrow-right"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. MAIN APPLICATION SCREEN -->
+        <div id="main-screen" class="screen">
+          <!-- App Header -->
+          <header class="app-header">
+            <div class="user-profile">
+              <div class="avatar" id="my-avatar">U</div>
+              <div class="user-info">
+                <h3 id="my-username">@username</h3>
+                <span class="connection-status"><span class="dot online"></span>Online</span>
+              </div>
+            </div>
+            <div class="header-actions">
+              <button class="header-btn" id="logout-btn" title="Logout">
+                <i data-lucide="log-out"></i>
+              </button>
+            </div>
+          </header>
+
+          <!-- App Screen Body -->
+          <div class="app-body">
+            
+            <!-- A. CHATS TAB -->
+            <div id="chats-tab" class="tab-content active">
+              <div class="tab-header">
+                <h2>Chats</h2>
+              </div>
+              
+              <div class="search-box">
+                <i data-lucide="search"></i>
+                <input type="text" placeholder="Search conversations...">
+              </div>
+
+              <div class="chat-list" id="conversation-list">
+                <!-- Global Chat Item -->
+                <div class="chat-item active" data-chat-target="global">
+                  <div class="chat-item-avatar global-avatar">
+                    <i data-lucide="globe"></i>
+                  </div>
+                  <div class="chat-item-details">
+                    <div class="chat-item-header">
+                      <h4>Global Room</h4>
+                      <span class="chat-item-time">Now</span>
+                    </div>
+                    <p class="chat-item-last-msg">Welcome to the open channel!</p>
+                  </div>
+                </div>
+                <!-- Dynamic DM lists will append here -->
+              </div>
+            </div>
+
+            <!-- B. CONTACTS TAB -->
+            <div id="contacts-tab" class="tab-content">
+              <div class="tab-header">
+                <h2>Contacts</h2>
+                <span class="contacts-count" id="online-count">0 Online</span>
+              </div>
+
+              <div class="search-box">
+                <i data-lucide="search"></i>
+                <input type="text" placeholder="Search contacts...">
+              </div>
+
+              <div class="contacts-list" id="users-list">
+                <!-- Dynamic active users will append here -->
+              </div>
+            </div>
+
+            <!-- C. SETTINGS TAB -->
+            <div id="settings-tab" class="tab-content">
+              <div class="tab-header">
+                <h2>Settings</h2>
+              </div>
+
+              <div class="settings-list">
+                <div class="settings-group">
+                  <h3>Media Options</h3>
+                  <div class="settings-item">
+                    <div class="settings-item-label">
+                      <i data-lucide="video"></i>
+                      <span>Enable Video Call</span>
+                    </div>
+                    <label class="switch">
+                      <input type="checkbox" id="settings-video-enable" checked>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                  <div class="settings-item">
+                    <div class="settings-item-label">
+                      <i data-lucide="mic"></i>
+                      <span>Enable Audio Call</span>
+                    </div>
+                    <label class="switch">
+                      <input type="checkbox" id="settings-audio-enable" checked>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="settings-group">
+                  <h3>Appearance</h3>
+                  <div class="settings-item">
+                    <div class="settings-item-label">
+                      <i data-lucide="moon"></i>
+                      <span>Cyber Glow Theme</span>
+                    </div>
+                    <span class="badge">Dark</span>
+                  </div>
+                </div>
+
+                <div class="settings-group">
+                  <h3>About</h3>
+                  <div class="settings-item-info">
+                    <p>VibeChat Mobile-First Web App v1.0.0</p>
+                    <p class="info-sub">Built using Flask, Socket.io, & WebRTC</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Bottom Navigation Bar -->
+          <nav class="bottom-nav">
+            <button class="nav-item active" data-tab="chats">
+              <i data-lucide="message-square"></i>
+              <span>Chats</span>
+            </button>
+            <button class="nav-item" data-tab="contacts">
+              <i data-lucide="users"></i>
+              <span>Contacts</span>
+            </button>
+            <button class="nav-item" data-tab="settings">
+              <i data-lucide="settings"></i>
+              <span>Settings</span>
+            </button>
+          </nav>
+        </div>
+
+        <!-- 3. SLIDING CONVERSATION VIEW (Full overlay for mobile feel) -->
+        <div id="conversation-view" class="conversation-overlay">
+          <header class="conversation-header">
+            <button class="back-btn" id="back-to-list-btn">
+              <i data-lucide="chevron-left"></i>
+            </button>
+            <div class="active-chat-user">
+              <div class="avatar compact" id="chat-header-avatar">G</div>
+              <div class="chat-header-info">
+                <h4 id="chat-header-title">Global Room</h4>
+                <span id="chat-header-status">Online</span>
+              </div>
+            </div>
+            <div class="conversation-actions">
+              <!-- Video call is hidden for global chat -->
+              <button class="action-btn call-action" id="header-video-call-btn" title="Video Call">
+                <i data-lucide="video"></i>
+              </button>
+            </div>
+          </header>
+
+          <div class="conversation-messages" id="messages-container">
+            <!-- Messages will be rendered here -->
+          </div>
+
+          <div class="typing-indicator-container" id="typing-indicator">
+            <span class="indicator-dot"></span>
+            <span class="indicator-dot"></span>
+            <span class="indicator-dot"></span>
+            <span id="typing-username">someone is typing</span>
+          </div>
+
+          <form class="conversation-input-form" id="chat-form">
+            <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
+            <button type="submit" class="send-btn" id="send-msg-btn">
+              <i data-lucide="send"></i>
+            </button>
+          </form>
+        </div>
+
+        <!-- 4. INCOMING CALL OVERLAY -->
+        <div id="incoming-call-screen" class="call-overlay-screen">
+          <div class="blur-bg-avatar" id="incoming-blur-avatar"></div>
+          <div class="call-overlay-content">
+            <div class="calling-pulse">
+              <div class="caller-avatar" id="incoming-caller-avatar">?</div>
+            </div>
+            <h2 id="incoming-caller-name">@username</h2>
+            <p class="call-status-label">Incoming Video Call...</p>
+            
+            <div class="call-actions-row">
+              <button class="call-btn decline-btn" id="decline-call-btn">
+                <i data-lucide="phone-off"></i>
+              </button>
+              <button class="call-btn accept-btn" id="accept-call-btn">
+                <i data-lucide="phone"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. CALL SCREEN OVERLAY (Active Call Screen) -->
+        <div id="active-call-screen" class="call-overlay-screen">
+          <!-- Remote Video (Full Screen background inside viewport) -->
+          <div class="video-container remote-video-wrapper">
+            <div class="video-placeholder" id="remote-video-placeholder">
+              <div class="spinner"></div>
+              <p>Connecting peer video...</p>
+            </div>
+            <video id="remoteVideo" autoplay playsinline></video>
+          </div>
+
+          <!-- Local Video (Floating Pip) -->
+          <div class="video-container local-video-pip" id="localVideoContainer">
+            <video id="localVideo" autoplay playsinline muted></video>
+          </div>
+
+          <!-- Call Status & Header -->
+          <div class="call-header-info-overlay">
+            <h3 id="call-partner-name">@username</h3>
+            <span class="call-timer" id="call-duration-timer">00:00</span>
+          </div>
+
+          <!-- Controls Bar -->
+          <div class="call-controls-bar">
+            <button class="control-btn" id="toggle-mic-btn" title="Mute/Unmute Mic">
+              <i data-lucide="mic"></i>
+            </button>
+            <button class="control-btn hangup" id="hangup-call-btn" title="End Call">
+              <i data-lucide="phone-off"></i>
+            </button>
+            <button class="control-btn" id="toggle-cam-btn" title="Turn On/Off Camera">
+              <i data-lucide="video"></i>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Custom Ringtone Audio (Generated from Web Audio API dynamically so we don't need assets) -->
+  
+  <script src="app.js"></script>
+  <script>
+    // Initialize lucide icons at start
+    lucide.createIcons();
+  </script>
+</body>
+</html>
