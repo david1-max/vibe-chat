@@ -364,9 +364,6 @@ function initSocket() {
       console.error("Failed to append outbox messages on login:", err);
     }
     
-    // Default open global chat view to render historical messages
-    openConversation('global');
-    
     // Refresh Lucide Icons
     lucide.createIcons();
   });
@@ -717,8 +714,34 @@ function renderConversationList(activeUsers) {
   
   // We keep Global Room, and append active direct messaging rooms
   const globalItem = conversationList.querySelector('[data-chat-target="global"]');
-  conversationList.innerHTML = '';
-  conversationList.appendChild(globalItem);
+  
+  if (globalItem) {
+    const newGlobalItem = globalItem.cloneNode(true);
+    newGlobalItem.addEventListener('click', () => {
+      openConversation('global');
+    });
+    
+    // Highlight if active
+    if (previousTarget === 'global') {
+      newGlobalItem.classList.add('active');
+    } else {
+      newGlobalItem.classList.remove('active');
+    }
+    
+    // Update last message in Global Room list item if history exists
+    const globalHistory = chatHistory['global'] || [];
+    if (globalHistory.length > 0) {
+      const lastMsgLabel = newGlobalItem.querySelector('.chat-item-last-msg');
+      if (lastMsgLabel) {
+        lastMsgLabel.textContent = globalHistory[globalHistory.length - 1].text;
+      }
+    }
+    
+    conversationList.innerHTML = '';
+    conversationList.appendChild(newGlobalItem);
+  } else {
+    conversationList.innerHTML = '';
+  }
   
   activeUsers.forEach(userObj => {
     // Robust parsing to handle both string array and object array fallbacks
