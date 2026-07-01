@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vibechat-v1';
+const CACHE_NAME = 'vibechat-v2'; // Incremented version to force update
 const ASSETS = [
   '/',
   '/index.html',
@@ -35,11 +35,26 @@ self.addEventListener('activate', (e) => {
   return self.clients.claim();
 });
 
-// Fetch Event - Serve Cache or Network
+// Fetch Event - Network-First Strategy (Guarantees updates load instantly when online)
 self.addEventListener('fetch', (e) => {
+  // Only handle standard GET requests (ignore chrome-extension URLs or socket polling)
+  if (e.request.method !== 'GET' || !e.request.url.startsWith(self.location.origin)) {
+    return;
+  }
+
   e.respondWith(
-    caches.match(e.request).then((cachedResponse) => {
-      return cachedResponse || fetch(e.request);
-    })
+    fetch(e.request)
+      .then((response) => {
+        // Cache the newly fetched resource
+        const responseClone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(e.request, responseClone);
+        });
+        return response;
+      })
+      .catch(() => {
+        // Fallback to cache if network is offline
+        return caches.match(e.request);
+      })
   );
 });
