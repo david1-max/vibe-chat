@@ -87,13 +87,14 @@ sid_to_username = {}
 
 @socketio.on('connect')
 def handle_connect():
-    print(f"Client connected: {request.sid}")
+    print(f"DEBUG [connect]: New client session connected. SID: {request.sid}")
 
 @socketio.on('join')
 def handle_join(data):
     username = data.get('username')
     password = data.get('password')
     mode = data.get('mode') # 'login' or 'register'
+    print(f"DEBUG [join]: Request received. username={username}, mode={mode}, sid={request.sid}")
     
     if not username or not password:
         emit('join_error', {'message': 'Username and password are required.'})
@@ -143,11 +144,13 @@ def handle_join(data):
 @socketio.on('send_msg')
 def handle_message(data):
     sender = sid_to_username.get(request.sid)
-    if not sender:
-        return
-        
     text = data.get('text')
     target = data.get('target')  # Username or None for global
+    print(f"DEBUG [send_msg]: sid={request.sid}, sender={sender}, target={target}, text={text}")
+    
+    if not sender:
+        print(f"WARNING [send_msg]: Ignored message from unauthenticated SID {request.sid}. Current active sessions: {sid_to_username}")
+        return
     
     msg_payload = {
         'sender': sender,
@@ -191,7 +194,7 @@ def handle_disconnect():
         if users.get(username) == sid:
             del users[username]
         del sid_to_username[sid]
-        print(f"User disconnected: {username}")
+        print(f"DEBUG [disconnect]: Authenticated user disconnected: {username} (SID: {sid})")
         # Broadcast updated user list
         broadcast_user_list()
     else:
