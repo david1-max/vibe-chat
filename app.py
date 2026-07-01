@@ -22,6 +22,9 @@ def init_db():
     conn.commit()
     conn.close()
 
+# Initialize database at module load time
+init_db()
+
 def register_user(username, password):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -176,5 +179,4 @@ def handle_disconnect():
         print(f"Unregistered client disconnected: {sid}")
 
 if __name__ == '__main__':
-    init_db()
     socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
