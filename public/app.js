@@ -433,10 +433,20 @@ function initSocket() {
       // Native PWA system push notification if app tab is hidden/backgrounded
       if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
         const title = data.target ? `New DM from @${data.sender}` : `New message in @Global`;
-        new Notification(title, {
+        const options = {
           body: data.text,
-          icon: '/icon-192.png'
-        });
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+          vibrate: [120, 80, 120] // Mobile vibration feedback
+        };
+        
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.ready.then(reg => {
+            reg.showNotification(title, options);
+          });
+        } else {
+          new Notification(title, options);
+        }
       }
     }
     
