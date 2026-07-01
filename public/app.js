@@ -261,8 +261,19 @@ function initSocket() {
   });
 
   socket.on('user_list', (users) => {
-    // Filter out myself
-    const otherUsers = users.filter(u => u.username !== myUsername);
+    // Standardize user list items to support both legacy strings and new objects
+    const standardizedUsers = users.map(u => {
+      if (typeof u === 'string') {
+        return { username: u, online: true };
+      }
+      return u;
+    });
+
+    // Filter out myself (fallback to usernameInput if myUsername isn't set yet)
+    const currentInputName = usernameInput.value.trim().toLowerCase();
+    const loggedInName = myUsername || currentInputName;
+    const otherUsers = standardizedUsers.filter(u => u && u.username && u.username !== loggedInName);
+    
     const onlineCount = otherUsers.filter(u => u.online).length;
     onlineCountLabel.textContent = `${onlineCount} Online`;
     renderUsers(otherUsers);
@@ -473,7 +484,7 @@ logoutBtn.addEventListener('click', () => {
 // Render Active users in contacts
 function renderUsers(users) {
   usersList.innerHTML = '';
-  if (users.length === 0) {
+  if (!users || users.length === 0) {
     usersList.innerHTML = `
       <div class="settings-item-info" style="text-align: center; color: var(--text-muted);">
         No other members registered yet.
@@ -482,8 +493,11 @@ function renderUsers(users) {
   }
   
   users.forEach(userObj => {
-    const user = userObj.username;
-    const isOnline = userObj.online;
+    // Robust parsing to handle both string array and object array fallbacks
+    const user = typeof userObj === 'string' ? userObj : (userObj.username || '');
+    const isOnline = typeof userObj === 'string' ? true : !!userObj.online;
+    
+    if (!user) return; // Skip invalid entries
     
     const item = document.createElement('div');
     item.className = 'contact-item';
@@ -541,8 +555,11 @@ function renderConversationList(activeUsers) {
   conversationList.appendChild(globalItem);
   
   activeUsers.forEach(userObj => {
-    const user = userObj.username;
-    const isOnline = userObj.online;
+    // Robust parsing to handle both string array and object array fallbacks
+    const user = typeof userObj === 'string' ? userObj : (userObj.username || '');
+    const isOnline = typeof userObj === 'string' ? true : !!userObj.online;
+    
+    if (!user) return;
     
     const item = document.createElement('div');
     item.className = 'chat-item';
