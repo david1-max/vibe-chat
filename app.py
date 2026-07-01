@@ -133,11 +133,11 @@ def handle_join(data):
     sid_to_username[request.sid] = username
     print(f"User joined: {username} with SID {request.sid}")
     
-    # Broadcast the updated users list to everyone
-    broadcast_user_list()
-    
     # Send join success back to user
     emit('join_success', {'username': username})
+    
+    # Broadcast the updated users list to everyone
+    broadcast_user_list()
 
 @socketio.on('send_msg')
 def handle_message(data):
