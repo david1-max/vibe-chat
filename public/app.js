@@ -262,10 +262,11 @@ function initSocket() {
 
   socket.on('user_list', (users) => {
     // Filter out myself
-    const activeUsers = users.filter(u => u !== myUsername);
-    onlineCountLabel.textContent = `${activeUsers.length} Online`;
-    renderUsers(activeUsers);
-    renderConversationList(activeUsers);
+    const otherUsers = users.filter(u => u.username !== myUsername);
+    const onlineCount = otherUsers.filter(u => u.online).length;
+    onlineCountLabel.textContent = `${onlineCount} Online`;
+    renderUsers(otherUsers);
+    renderConversationList(otherUsers);
   });
 
   socket.on('receive_msg', (data) => {
@@ -475,28 +476,39 @@ function renderUsers(users) {
   if (users.length === 0) {
     usersList.innerHTML = `
       <div class="settings-item-info" style="text-align: center; color: var(--text-muted);">
-        No other users online right now.
+        No other members registered yet.
       </div>`;
     return;
   }
   
-  users.forEach(user => {
+  users.forEach(userObj => {
+    const user = userObj.username;
+    const isOnline = userObj.online;
+    
     const item = document.createElement('div');
     item.className = 'contact-item';
     
     const initials = user.substring(0, 2).toUpperCase();
     
+    const statusBadge = isOnline
+      ? `<span class="dot online"></span>Active`
+      : `<span class="dot" style="background-color: var(--text-muted); box-shadow: none;"></span>Offline`;
+      
+    const callBtnHtml = isOnline
+      ? `<button class="contact-btn call-btn" data-user="${user}"><i data-lucide="video"></i></button>`
+      : `<button class="contact-btn call-btn disabled" style="opacity: 0.35; pointer-events: none;" title="User is Offline" disabled><i data-lucide="video"></i></button>`;
+      
     item.innerHTML = `
       <div class="contact-left">
         <div class="contact-avatar">${initials}</div>
         <div class="contact-info">
           <h4>@${user}</h4>
-          <p><span class="dot online"></span>Active</p>
+          <p>${statusBadge}</p>
         </div>
       </div>
       <div class="contact-actions">
         <button class="contact-btn chat-action" data-user="${user}"><i data-lucide="message-square"></i></button>
-        <button class="contact-btn call-btn" data-user="${user}"><i data-lucide="video"></i></button>
+        ${callBtnHtml}
       </div>
     `;
     
@@ -506,10 +518,12 @@ function renderUsers(users) {
       openConversation(user);
     });
     
-    item.querySelector('.call-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      initiateCall(user);
-    });
+    if (isOnline) {
+      item.querySelector('.call-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        initiateCall(user);
+      });
+    }
     
     usersList.appendChild(item);
   });
@@ -517,7 +531,6 @@ function renderUsers(users) {
   lucide.createIcons();
 }
 
-// Render dynamic recent conversation list inside Chats tab
 function renderConversationList(activeUsers) {
   // Save current active selection if any
   const previousTarget = currentChatTarget;
@@ -527,7 +540,10 @@ function renderConversationList(activeUsers) {
   conversationList.innerHTML = '';
   conversationList.appendChild(globalItem);
   
-  activeUsers.forEach(user => {
+  activeUsers.forEach(userObj => {
+    const user = userObj.username;
+    const isOnline = userObj.online;
+    
     const item = document.createElement('div');
     item.className = 'chat-item';
     item.setAttribute('data-chat-target', user);
@@ -538,7 +554,7 @@ function renderConversationList(activeUsers) {
     const initials = user.substring(0, 2).toUpperCase();
     const history = chatHistory[user] || [];
     const lastMsg = history.length > 0 ? history[history.length - 1].text : 'Start chatting...';
-    const lastTime = history.length > 0 ? 'Active' : '';
+    const lastTime = isOnline ? 'Active' : 'Offline';
     
     item.innerHTML = `
       <div class="chat-item-avatar user-avatar-placeholder">${initials}</div>

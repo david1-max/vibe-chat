@@ -56,6 +56,24 @@ def user_exists(username):
     conn.close()
     return row is not None
 
+def get_all_users():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('SELECT username FROM users')
+    rows = c.fetchall()
+    conn.close()
+    return [row[0] for row in rows]
+
+def broadcast_user_list():
+    all_registered = get_all_users()
+    presence_list = []
+    for username in all_registered:
+        presence_list.append({
+            'username': username,
+            'online': username in users
+        })
+    emit('user_list', presence_list, broadcast=True)
+
 # Serve the index.html for the root route
 @app.route('/')
 def index():
@@ -116,7 +134,7 @@ def handle_join(data):
     print(f"User joined: {username} with SID {request.sid}")
     
     # Broadcast the updated users list to everyone
-    emit('user_list', list(users.keys()), broadcast=True)
+    broadcast_user_list()
     
     # Send join success back to user
     emit('join_success', {'username': username})
@@ -174,7 +192,7 @@ def handle_disconnect():
         del sid_to_username[sid]
         print(f"User disconnected: {username}")
         # Broadcast updated user list
-        emit('user_list', list(users.keys()), broadcast=True)
+        broadcast_user_list()
     else:
         print(f"Unregistered client disconnected: {sid}")
 
