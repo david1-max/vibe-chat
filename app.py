@@ -13,6 +13,7 @@ DB_FILE = 'database.db'
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    c.execute('PRAGMA journal_mode=WAL;')
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
