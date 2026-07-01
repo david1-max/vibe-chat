@@ -2,6 +2,7 @@
 let socket;
 let myUsername = '';
 let loginMode = 'login'; // 'login' or 'register'
+let savedCredentials = null; // Save credentials in memory to auto-reauthenticate on socket reconnect
 let currentChatTarget = 'global'; // 'global' or username string
 let chatHistory = {
   'global': [] // Array of messages
@@ -242,6 +243,19 @@ function createDummyStream() {
 function initSocket() {
   socket = io();
 
+  // Re-authenticate session on reconnect/upgrade transport changes
+  socket.on('connect', () => {
+    console.log('Socket connected/reconnected!');
+    if (savedCredentials) {
+      console.log('Re-authenticating session...');
+      socket.emit('join', {
+        username: savedCredentials.username,
+        password: savedCredentials.password,
+        mode: 'login'
+      });
+    }
+  });
+
   // Socket Receivers
   socket.on('join_success', (data) => {
     myUsername = data.username;
@@ -462,6 +476,8 @@ function performLogin() {
     initSocket();
   }
   
+  savedCredentials = { username: username, password: password };
+  
   socket.emit('join', { 
     username: username,
     password: password,
@@ -474,6 +490,7 @@ logoutBtn.addEventListener('click', () => {
     socket.disconnect();
     socket = null;
   }
+  savedCredentials = null;
   mainScreen.classList.remove('active');
   conversationView.classList.remove('active');
   loginScreen.classList.add('active');
