@@ -265,6 +265,21 @@ function initSocket() {
     loginScreen.classList.remove('active');
     mainScreen.classList.add('active');
     
+    // Reset local client history and populate from server-side database sync
+    chatHistory = { 'global': [] };
+    if (data.history) {
+      data.history.forEach(msg => {
+        const roomKey = msg.target ? (msg.target === myUsername ? msg.sender : msg.target) : 'global';
+        if (!chatHistory[roomKey]) {
+          chatHistory[roomKey] = [];
+        }
+        chatHistory[roomKey].push(msg);
+      });
+    }
+    
+    // Default open global chat view to render historical messages
+    openConversation('global');
+    
     // Refresh Lucide Icons
     lucide.createIcons();
   });

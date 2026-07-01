@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__, static_folder='public', static_url_path='')
 app.config['SECRET_KEY'] = 'secret-key-for-vibechat'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent', ping_timeout=60, ping_interval=25)
+socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25)
 
 DB_FILE = 'database.db'
 
@@ -18,6 +18,15 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
             password_hash TEXT NOT NULL
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender TEXT NOT NULL,
+            target TEXT,
+            text TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     conn.commit()
@@ -74,6 +83,37 @@ def broadcast_user_list():
             'online': username in users
         })
     emit('user_list', presence_list, broadcast=True)
+
+def save_message(sender, target, text):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('INSERT INTO messages (sender, target, text) VALUES (?, ?, ?)', (sender, target, text))
+    conn.commit()
+    conn.close()
+
+def get_user_chat_history(username):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        SELECT sender, target, text, timestamp 
+        FROM messages 
+        WHERE target IS NULL 
+           OR sender = ? 
+           OR target = ?
+        ORDER BY timestamp ASC
+    ''', (username, username))
+    rows = c.fetchall()
+    conn.close()
+    
+    history = []
+    for row in rows:
+        history.append({
+            'sender': row[0],
+            'target': row[1],
+            'text': row[2],
+            'timestamp': row[3]
+        })
+    return history
 
 # Serve the index.html for the root route
 @app.route('/')
@@ -135,8 +175,11 @@ def handle_join(data):
     sid_to_username[request.sid] = username
     print(f"User joined: {username} with SID {request.sid}")
     
+    # Get user's chat history (global and private DMs)
+    history = get_user_chat_history(username)
+    
     # Send join success back to user
-    emit('join_success', {'username': username})
+    emit('join_success', {'username': username, 'history': history})
     
     # Broadcast the updated users list to everyone
     broadcast_user_list()
@@ -151,6 +194,9 @@ def handle_message(data):
     if not sender:
         print(f"WARNING [send_msg]: Ignored message from unauthenticated SID {request.sid}. Current active sessions: {sid_to_username}")
         return
+        
+    # Save message to database for persistence
+    save_message(sender, target, text)
     
     msg_payload = {
         'sender': sender,
