@@ -144,6 +144,34 @@ function stopRingtone() {
   }
 }
 
+// Play notification sound chime for incoming messages using Web Audio API
+function playNotificationSound() {
+  initAudio();
+  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
+  
+  osc.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  
+  osc.type = 'sine';
+  // Dual-frequency chime ding (sweep D5 -> A5)
+  osc.frequency.setValueAtTime(587.33, now);
+  osc.frequency.exponentialRampToValueAtTime(880.00, now + 0.12);
+  
+  gainNode.gain.setValueAtTime(0, now);
+  gainNode.gain.linearRampToValueAtTime(0.12, now + 0.02);
+  gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+  
+  osc.start(now);
+  osc.stop(now + 0.22);
+}
+
 // --- DUMMY CANVAS STREAM FALLBACK ---
 function createDummyStream() {
   const canvas = document.createElement('canvas');
@@ -305,6 +333,11 @@ function initSocket() {
       }));
     }
     
+    // Request notification permission for PWA alerts
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+    
     // Reset local client history and populate from server-side database sync
     chatHistory = { 'global': [] };
     if (data.history) {
@@ -395,6 +428,20 @@ function initSocket() {
       chatHistory[roomKey] = [];
     }
     chatHistory[roomKey].push(data);
+    
+    // Play notification sound chime for incoming messages
+    if (data.sender !== myUsername) {
+      playNotificationSound();
+      
+      // Native PWA system push notification if app tab is hidden/backgrounded
+      if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+        const title = data.target ? `New DM from @${data.sender}` : `New message in @Global`;
+        new Notification(title, {
+          body: data.text,
+          icon: '/icon-192.png'
+        });
+      }
+    }
     
     // Re-render conversation item list to show last message
     updateConversationLastMessage(roomKey, data);
