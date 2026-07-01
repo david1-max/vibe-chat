@@ -294,6 +294,27 @@ body {
   margin-top: 4px;
 }
 
+.login-toggle {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: -10px;
+  margin-bottom: 5px;
+}
+
+.login-toggle a {
+  color: var(--color-secondary);
+  text-decoration: none;
+  font-weight: 600;
+  margin-left: 5px;
+  transition: var(--transition-smooth);
+}
+
+.login-toggle a:hover {
+  color: var(--color-primary);
+  text-shadow: 0 0 8px var(--color-primary-glow);
+}
+
 /* Premium Buttons */
 .glow-btn {
   width: 100%;

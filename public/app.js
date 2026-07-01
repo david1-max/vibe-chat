@@ -1,6 +1,7 @@
 // Client State Variables
 let socket;
 let myUsername = '';
+let loginMode = 'login'; // 'login' or 'register'
 let currentChatTarget = 'global'; // 'global' or username string
 let chatHistory = {
   'global': [] // Array of messages
@@ -36,6 +37,10 @@ const incomingCallScreen = document.getElementById('incoming-call-screen');
 const activeCallScreen = document.getElementById('active-call-screen');
 
 const usernameInput = document.getElementById('username-input');
+const passwordInput = document.getElementById('password-input');
+const toggleModeBtn = document.getElementById('toggle-mode-btn');
+const toggleText = document.getElementById('toggle-text');
+const loginBtnText = document.getElementById('login-btn-text');
 const loginBtn = document.getElementById('login-btn');
 const loginError = document.getElementById('login-error');
 
@@ -250,6 +255,11 @@ function initSocket() {
     lucide.createIcons();
   });
 
+  socket.on('join_error', (data) => {
+    loginError.textContent = data.message;
+    loginError.style.display = 'block';
+  });
+
   socket.on('user_list', (users) => {
     // Filter out myself
     const activeUsers = users.filter(u => u !== myUsername);
@@ -385,14 +395,36 @@ headerVideoCallBtn.addEventListener('click', () => {
   }
 });
 
+// Toggle Mode Log In / Register
+toggleModeBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  loginError.style.display = 'none';
+  if (loginMode === 'login') {
+    loginMode = 'register';
+    toggleText.textContent = 'Already have an account?';
+    toggleModeBtn.textContent = 'Log In';
+    loginBtnText.textContent = 'Register & Enter';
+  } else {
+    loginMode = 'login';
+    toggleText.textContent = "Don't have an account?";
+    toggleModeBtn.textContent = 'Register';
+    loginBtnText.textContent = 'Log In';
+  }
+});
+
 // Form login submit
 loginBtn.addEventListener('click', performLogin);
 usernameInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') performLogin();
 });
+passwordInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') performLogin();
+});
 
 function performLogin() {
   const username = usernameInput.value.trim().toLowerCase();
+  const password = passwordInput.value;
+  
   // Valid user checks: letters, numbers, between 3 to 12 chars
   const nameRegex = /^[a-z0-9_]{3,12}$/;
   if (!nameRegex.test(username)) {
@@ -401,11 +433,28 @@ function performLogin() {
     return;
   }
   
+  if (!password) {
+    loginError.textContent = "Password is required.";
+    loginError.style.display = 'block';
+    return;
+  }
+  
+  if (loginMode === 'register' && password.length < 4) {
+    loginError.textContent = "Password must be at least 4 characters long.";
+    loginError.style.display = 'block';
+    return;
+  }
+  
   loginError.style.display = 'none';
   if (!socket) {
     initSocket();
   }
-  socket.emit('join', { username: username });
+  
+  socket.emit('join', { 
+    username: username,
+    password: password,
+    mode: loginMode
+  });
 }
 
 logoutBtn.addEventListener('click', () => {
@@ -417,6 +466,7 @@ logoutBtn.addEventListener('click', () => {
   conversationView.classList.remove('active');
   loginScreen.classList.add('active');
   usernameInput.value = '';
+  passwordInput.value = '';
 });
 
 // Render Active users in contacts

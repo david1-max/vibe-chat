@@ -57,16 +57,29 @@
             </div>
             
             <div class="input-group">
-              <label for="username-input">Choose your @handle</label>
+              <label for="username-input">Username (@handle)</label>
               <div class="input-wrapper">
                 <i data-lucide="at-sign" class="field-icon"></i>
                 <input type="text" id="username-input" placeholder="nickname" autocomplete="off">
               </div>
+            </div>
+
+            <div class="input-group">
+              <label for="password-input">Password</label>
+              <div class="input-wrapper">
+                <i data-lucide="lock" class="field-icon"></i>
+                <input type="password" id="password-input" placeholder="••••••••" autocomplete="off">
+              </div>
               <span class="input-error" id="login-error">Username already taken or invalid.</span>
+            </div>
+            
+            <div class="login-toggle">
+              <span id="toggle-text">Don't have an account?</span>
+              <a href="#" id="toggle-mode-btn">Register</a>
             </div>
 
             <button id="login-btn" class="glow-btn">
-              <span>Enter Space</span>
+              <span id="login-btn-text">Log In</span>
               <i data-lucide="arrow-right"></i>
             </button>
           </div>

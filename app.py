@@ -1,10 +1,57 @@
 import os
+import sqlite3
 from flask import Flask, send_from_directory, request
 from flask_socketio import SocketIO, emit
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__, static_folder='public', static_url_path='')
 app.config['SECRET_KEY'] = 'secret-key-for-vibechat'
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+DB_FILE = 'database.db'
+
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def register_user(username, password):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        password_hash = generate_password_hash(password)
+        c.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', (username, password_hash))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
+def verify_user(username, password):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('SELECT password_hash FROM users WHERE username = ?', (username,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return check_password_hash(row[0], password)
+    return False
+
+def user_exists(username):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('SELECT 1 FROM users WHERE username = ?', (username,))
+    row = c.fetchone()
+    conn.close()
+    return row is not None
 
 # Serve the index.html for the root route
 @app.route('/')
@@ -23,16 +70,41 @@ def handle_connect():
 @socketio.on('join')
 def handle_join(data):
     username = data.get('username')
-    if not username:
+    password = data.get('password')
+    mode = data.get('mode') # 'login' or 'register'
+    
+    if not username or not password:
+        emit('join_error', {'message': 'Username and password are required.'})
+        return
+        
+    username = username.strip().lower()
+    
+    # Handle authentication modes
+    if mode == 'register':
+        if len(password) < 4:
+            emit('join_error', {'message': 'Password must be at least 4 characters.'})
+            return
+        if user_exists(username):
+            emit('join_error', {'message': 'Username is already taken.'})
+            return
+        if not register_user(username, password):
+            emit('join_error', {'message': 'Registration failed. Try again.'})
+            return
+    elif mode == 'login':
+        if not user_exists(username):
+            emit('join_error', {'message': 'Username does not exist. Register first.'})
+            return
+        if not verify_user(username, password):
+            emit('join_error', {'message': 'Incorrect password.'})
+            return
+    else:
+        emit('join_error', {'message': 'Invalid authentication mode.'})
         return
     
-    # Handle duplicate usernames gracefully
+    # Handle duplicate socket sessions for the same logged in user
     if username in users:
-        # We can append a small number or just let them take over the username
-        # Let's let them take over, but log it
         old_sid = users[username]
         print(f"Username {username} re-registered from {old_sid} to {request.sid}")
-        # Remove old sid mapping
         if old_sid in sid_to_username:
             del sid_to_username[old_sid]
 
@@ -104,4 +176,5 @@ def handle_disconnect():
         print(f"Unregistered client disconnected: {sid}")
 
 if __name__ == '__main__':
+    init_db()
     socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
