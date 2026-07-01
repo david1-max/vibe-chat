@@ -26,9 +26,15 @@ def init_db():
             sender TEXT NOT NULL,
             target TEXT,
             text TEXT NOT NULL,
+            status TEXT DEFAULT 'sent',
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    # Safely handle database schema upgrades for existing installations
+    try:
+        c.execute("ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'sent'")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -84,10 +90,26 @@ def broadcast_user_list():
         })
     emit('user_list', presence_list, broadcast=True)
 
-def save_message(sender, target, text):
+def save_message(sender, target, text, status='sent'):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute('INSERT INTO messages (sender, target, text) VALUES (?, ?, ?)', (sender, target, text))
+    c.execute('INSERT INTO messages (sender, target, text, status) VALUES (?, ?, ?, ?)', (sender, target, text, status))
+    conn.commit()
+    msg_id = c.lastrowid
+    conn.close()
+    return msg_id
+
+def update_message_status(msg_id, status):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('UPDATE messages SET status = ? WHERE id = ?', (status, msg_id))
+    conn.commit()
+    conn.close()
+
+def mark_incoming_messages_delivered(username):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE messages SET status = 'delivered' WHERE target = ? AND status = 'sent'", (username,))
     conn.commit()
     conn.close()
 
@@ -95,7 +117,7 @@ def get_user_chat_history(username):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''
-        SELECT sender, target, text, timestamp 
+        SELECT id, sender, target, text, status, timestamp 
         FROM messages 
         WHERE target IS NULL 
            OR sender = ? 
@@ -108,10 +130,12 @@ def get_user_chat_history(username):
     history = []
     for row in rows:
         history.append({
-            'sender': row[0],
-            'target': row[1],
-            'text': row[2],
-            'timestamp': row[3]
+            'id': row[0],
+            'sender': row[1],
+            'target': row[2],
+            'text': row[3],
+            'status': row[4],
+            'timestamp': row[5]
         })
     return history
 
@@ -175,6 +199,21 @@ def handle_join(data):
     sid_to_username[request.sid] = username
     print(f"User joined: {username} with SID {request.sid}")
     
+    # Mark incoming messages to this user as 'delivered'
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT sender FROM messages WHERE target = ? AND status = 'sent'", (username,))
+    pending_senders = [row[0] for row in c.fetchall()]
+    conn.close()
+    
+    mark_incoming_messages_delivered(username)
+    
+    # Notify active senders that their messages were delivered
+    for ps in pending_senders:
+        ps_sid = users.get(ps)
+        if ps_sid:
+            emit('msg_status_update_bulk', {'partner': username, 'status': 'delivered'}, room=ps_sid)
+            
     # Get user's chat history (global and private DMs)
     history = get_user_chat_history(username)
     
@@ -196,13 +235,23 @@ def handle_message(data):
         print(f"WARNING [send_msg]: Ignored message from unauthenticated SID {request.sid}. Current active sessions: {sid_to_username}")
         return
         
-    # Save message to database for persistence
-    save_message(sender, target, text)
+    # Check if target is online to determine initial status
+    status = 'sent'
+    if target:
+        if target in users:
+            status = 'delivered'
+    else:
+        status = 'delivered' # Global messages are always immediately delivered to room
+        
+    # Save message to database for persistence and get generated row ID
+    msg_id = save_message(sender, target, text, status)
     
     msg_payload = {
+        'id': msg_id,
         'sender': sender,
         'text': text,
         'target': target,
+        'status': status,
         'offlineId': offline_id
     }
     
@@ -215,6 +264,26 @@ def handle_message(data):
     else:
         # Global message: broadcast to all
         emit('receive_msg', msg_payload, broadcast=True)
+
+@socketio.on('mark_read')
+def handle_mark_read(data):
+    reader = sid_to_username.get(request.sid)
+    partner = data.get('partner')
+    print(f"DEBUG [mark_read]: reader={reader}, partner={partner}")
+    if not reader or not partner:
+        return
+        
+    # Update messages in db to 'read'
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE messages SET status = 'read' WHERE sender = ? AND target = ? AND status != 'read'", (partner, reader))
+    conn.commit()
+    conn.close()
+    
+    # Notify partner (sender) that their messages have been read
+    partner_sid = users.get(partner)
+    if partner_sid:
+        emit('msg_status_update_bulk', {'partner': reader, 'status': 'read'}, room=partner_sid)
 
 @socketio.on('signal')
 def handle_signal(data):

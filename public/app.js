@@ -281,6 +281,13 @@ function initSocket() {
     syncOutbox();
   });
 
+  socket.on('msg_status_update_bulk', (data) => {
+    const partner = data.partner;
+    const status = data.status;
+    console.log(`DEBUG [status_update]: bulk status update. partner=${partner}, status=${status}`);
+    updatePartnerMessagesStatus(partner, status);
+  });
+
   // Socket Receivers
   socket.on('join_success', (data) => {
     myUsername = data.username;
@@ -366,14 +373,20 @@ function initSocket() {
       const pendingMsg = history.find(m => m.id === data.offlineId);
       if (pendingMsg) {
         delete pendingMsg.pending;
+        pendingMsg.id = data.id; // Update temp ID to DB ID
+        pendingMsg.status = data.status;
       }
       
       // Update in DOM
       const pendingEl = messagesContainer.querySelector(`[data-msg-id="${data.offlineId}"]`);
       if (pendingEl) {
+        pendingEl.setAttribute('data-msg-id', data.id);
         pendingEl.style.opacity = '1';
         const icon = pendingEl.querySelector('.pending-icon');
         if (icon) icon.remove();
+        
+        // Add proper checkmark status ticks
+        updateMessageStatusInDOM(data.id, data.status);
       }
       return; // Already rendered in outbox flow, do not duplicate
     }
@@ -386,10 +399,15 @@ function initSocket() {
     // Re-render conversation item list to show last message
     updateConversationLastMessage(roomKey, data);
     
-    // If currently looking at this chat, render the bubble
+    // If currently looking at this chat, render the bubble and mark read
     if (currentChatTarget === roomKey && conversationView.classList.contains('active')) {
       appendMessageBubble(data);
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      
+      // Mark as read immediately if it's a private chat
+      if (roomKey !== 'global' && data.sender !== myUsername) {
+        socket.emit('mark_read', { partner: roomKey });
+      }
     }
   });
 
@@ -705,9 +723,66 @@ function updateConversationLastMessage(roomKey, data) {
   }
 }
 
+// Update single message status indicator in DOM
+function updateMessageStatusInDOM(msgId, status) {
+  const msgEl = messagesContainer.querySelector(`[data-msg-id="${msgId}"]`);
+  if (!msgEl) return;
+  
+  let tickEl = msgEl.querySelector('.msg-status-tick');
+  if (!tickEl) {
+    const bubble = msgEl.querySelector('.msg-bubble');
+    if (!bubble) return;
+    tickEl = document.createElement('span');
+    tickEl.className = 'msg-status-tick';
+    tickEl.style.marginLeft = '6px';
+    tickEl.style.display = 'inline-flex';
+    tickEl.style.alignItems = 'center';
+    bubble.appendChild(tickEl);
+  }
+  
+  if (status === 'sent') {
+    tickEl.className = 'msg-status-tick sent';
+    tickEl.style.color = 'var(--text-muted)';
+    tickEl.innerHTML = `<i data-lucide="check" style="width: 12px; height: 12px;"></i>`;
+  } else if (status === 'delivered') {
+    tickEl.className = 'msg-status-tick delivered';
+    tickEl.style.color = 'var(--text-muted)';
+    tickEl.innerHTML = `<i data-lucide="check" style="width: 12px; height: 12px; margin-right: -6px;"></i><i data-lucide="check" style="width: 12px; height: 12px;"></i>`;
+  } else if (status === 'read') {
+    tickEl.className = 'msg-status-tick read';
+    tickEl.style.color = '#38bdf8';
+    tickEl.innerHTML = `<i data-lucide="check" style="width: 12px; height: 12px; margin-right: -6px;"></i><i data-lucide="check" style="width: 12px; height: 12px;"></i>`;
+  }
+  
+  lucide.createIcons();
+}
+
+// Bulk update message statuses in cache and view for a DM partner
+function updatePartnerMessagesStatus(partner, status) {
+  const history = chatHistory[partner] || [];
+  history.forEach(msg => {
+    if (msg.sender === myUsername) {
+      msg.status = status;
+    }
+  });
+  
+  if (currentChatTarget === partner) {
+    history.forEach(msg => {
+      if (msg.sender === myUsername && msg.id) {
+        updateMessageStatusInDOM(msg.id, status);
+      }
+    });
+  }
+}
+
 // Open Conversation Panel
 function openConversation(target) {
   currentChatTarget = target;
+  
+  // Mark incoming messages from this user as read
+  if (target !== 'global' && socket && socket.connected) {
+    socket.emit('mark_read', { partner: target });
+  }
   
   // Highlight conversation in list
   document.querySelectorAll('.chat-item').forEach(item => {
@@ -754,10 +829,19 @@ function appendMessageBubble(msg) {
     msgWrapper.style.opacity = '0.65';
   }
   
-  const statusMarkup = msg.pending 
-    ? `<span class="pending-icon" style="margin-left: 6px; display: inline-flex; align-items: center; color: var(--text-muted);"><i data-lucide="clock" style="width: 12px; height: 12px;"></i></span>` 
-    : '';
-    
+  let statusMarkup = '';
+  if (isOutgoing) {
+    if (msg.pending) {
+      statusMarkup = `<span class="msg-status-tick pending" style="margin-left: 6px; display: inline-flex; align-items: center; color: var(--text-muted);"><i data-lucide="clock" style="width: 12px; height: 12px;"></i></span>`;
+    } else if (msg.status === 'sent') {
+      statusMarkup = `<span class="msg-status-tick sent" style="margin-left: 6px; display: inline-flex; align-items: center; color: var(--text-muted);"><i data-lucide="check" style="width: 12px; height: 12px;"></i></span>`;
+    } else if (msg.status === 'delivered') {
+      statusMarkup = `<span class="msg-status-tick delivered" style="margin-left: 6px; display: inline-flex; align-items: center; color: var(--text-muted);"><i data-lucide="check" style="width: 12px; height: 12px; margin-right: -6px;"></i><i data-lucide="check" style="width: 12px; height: 12px;"></i></span>`;
+    } else if (msg.status === 'read') {
+      statusMarkup = `<span class="msg-status-tick read" style="margin-left: 6px; display: inline-flex; align-items: center; color: #38bdf8;"><i data-lucide="check" style="width: 12px; height: 12px; margin-right: -6px;"></i><i data-lucide="check" style="width: 12px; height: 12px;"></i></span>`;
+    }
+  }
+  
   msgWrapper.innerHTML = `
     <span class="msg-sender-label">${isOutgoing ? 'You' : '@' + msg.sender}</span>
     <div class="msg-bubble" style="display: flex; align-items: center;">
