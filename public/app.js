@@ -239,6 +239,29 @@ function createDummyStream() {
   return new MediaStream([videoTrack, audioTrack]);
 }
 
+// Sync queued offline messages in localStorage outbox to the server
+function syncOutbox() {
+  let outbox = [];
+  try {
+    outbox = JSON.parse(localStorage.getItem('vibechat_outbox') || '[]');
+  } catch (err) {
+    outbox = [];
+  }
+  
+  if (outbox.length > 0) {
+    console.log(`Syncing ${outbox.length} pending offline messages...`);
+    outbox.forEach(msg => {
+      socket.emit('send_msg', {
+        text: msg.text,
+        target: msg.target,
+        offlineId: msg.id
+      });
+    });
+    // Clear outbox
+    localStorage.setItem('vibechat_outbox', '[]');
+  }
+}
+
 // --- INIT APP ---
 function initSocket() {
   socket = io();
@@ -254,6 +277,8 @@ function initSocket() {
         mode: 'login'
       });
     }
+    // Automatically sync outbox on connection recovery
+    syncOutbox();
   });
 
   // Socket Receivers
@@ -265,6 +290,14 @@ function initSocket() {
     loginScreen.classList.remove('active');
     mainScreen.classList.add('active');
     
+    // Save session in localStorage for permanent login
+    if (savedCredentials) {
+      localStorage.setItem('vibechat_session', JSON.stringify({
+        username: myUsername,
+        password: savedCredentials.password
+      }));
+    }
+    
     // Reset local client history and populate from server-side database sync
     chatHistory = { 'global': [] };
     if (data.history) {
@@ -275,6 +308,20 @@ function initSocket() {
         }
         chatHistory[roomKey].push(msg);
       });
+    }
+    
+    // Append local outbox pending messages so they stay visible across page reloads
+    try {
+      const outbox = JSON.parse(localStorage.getItem('vibechat_outbox') || '[]');
+      outbox.forEach(msg => {
+        const roomKey = msg.target || 'global';
+        if (!chatHistory[roomKey]) {
+          chatHistory[roomKey] = [];
+        }
+        chatHistory[roomKey].push(msg);
+      });
+    } catch (err) {
+      console.error("Failed to append outbox messages on login:", err);
     }
     
     // Default open global chat view to render historical messages
@@ -310,8 +357,27 @@ function initSocket() {
   });
 
   socket.on('receive_msg', (data) => {
-    // Save to memory
     const roomKey = data.target ? (data.target === myUsername ? data.sender : data.target) : 'global';
+    
+    // Check if this is a receipt for a pending offline message we sent
+    if (data.offlineId && data.sender === myUsername) {
+      // Update in local history
+      const history = chatHistory[roomKey] || [];
+      const pendingMsg = history.find(m => m.id === data.offlineId);
+      if (pendingMsg) {
+        delete pendingMsg.pending;
+      }
+      
+      // Update in DOM
+      const pendingEl = messagesContainer.querySelector(`[data-msg-id="${data.offlineId}"]`);
+      if (pendingEl) {
+        pendingEl.style.opacity = '1';
+        const icon = pendingEl.querySelector('.pending-icon');
+        if (icon) icon.remove();
+      }
+      return; // Already rendered in outbox flow, do not duplicate
+    }
+    
     if (!chatHistory[roomKey]) {
       chatHistory[roomKey] = [];
     }
@@ -506,11 +572,14 @@ logoutBtn.addEventListener('click', () => {
     socket = null;
   }
   savedCredentials = null;
+  localStorage.removeItem('vibechat_session'); // Clear persistent session
   mainScreen.classList.remove('active');
   conversationView.classList.remove('active');
   loginScreen.classList.add('active');
   usernameInput.value = '';
   passwordInput.value = '';
+  loginError.style.display = 'none';
+  loginError.style.color = 'var(--error)'; // Reset color
 });
 
 // Render Active users in contacts
@@ -678,13 +747,27 @@ function appendMessageBubble(msg) {
   const msgWrapper = document.createElement('div');
   const isOutgoing = msg.sender === myUsername;
   msgWrapper.className = `msg-wrapper ${isOutgoing ? 'outgoing' : 'incoming'}`;
+  if (msg.id) {
+    msgWrapper.setAttribute('data-msg-id', msg.id);
+  }
+  if (msg.pending) {
+    msgWrapper.style.opacity = '0.65';
+  }
   
+  const statusMarkup = msg.pending 
+    ? `<span class="pending-icon" style="margin-left: 6px; display: inline-flex; align-items: center; color: var(--text-muted);"><i data-lucide="clock" style="width: 12px; height: 12px;"></i></span>` 
+    : '';
+    
   msgWrapper.innerHTML = `
     <span class="msg-sender-label">${isOutgoing ? 'You' : '@' + msg.sender}</span>
-    <div class="msg-bubble">${escapeHtml(msg.text)}</div>
+    <div class="msg-bubble" style="display: flex; align-items: center;">
+      <span>${escapeHtml(msg.text)}</span>
+      ${statusMarkup}
+    </div>
   `;
   
   messagesContainer.appendChild(msgWrapper);
+  lucide.createIcons();
 }
 
 // Send Message
@@ -694,11 +777,47 @@ chatForm.addEventListener('submit', (e) => {
   if (!text) return;
   
   const target = currentChatTarget === 'global' ? null : currentChatTarget;
+  const roomKey = currentChatTarget;
   
-  socket.emit('send_msg', {
-    text: text,
-    target: target
-  });
+  const isOnline = socket && socket.connected;
+  
+  if (isOnline) {
+    socket.emit('send_msg', {
+      text: text,
+      target: target
+    });
+  } else {
+    // Generate a temporary ID for the pending message
+    const pendingId = 'pending_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    const pendingMsg = {
+      id: pendingId,
+      sender: myUsername,
+      target: target,
+      text: text,
+      timestamp: new Date().toISOString(),
+      pending: true
+    };
+    
+    // Add locally to chat history
+    if (!chatHistory[roomKey]) {
+      chatHistory[roomKey] = [];
+    }
+    chatHistory[roomKey].push(pendingMsg);
+    
+    // Queue in localStorage outbox
+    let outbox = [];
+    try {
+      outbox = JSON.parse(localStorage.getItem('vibechat_outbox') || '[]');
+    } catch (err) {
+      outbox = [];
+    }
+    outbox.push(pendingMsg);
+    localStorage.setItem('vibechat_outbox', JSON.stringify(outbox));
+    
+    // Render immediately in outbox state
+    appendMessageBubble(pendingMsg);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  }
   
   chatInput.value = '';
 });
@@ -1009,3 +1128,28 @@ if ('serviceWorker' in navigator) {
       .catch(err => console.error('Service Worker registration failed:', err));
   });
 }
+
+// Auto-login from saved session in localStorage
+(function checkSavedSession() {
+  const sessionData = localStorage.getItem('vibechat_session');
+  if (sessionData) {
+    try {
+      const session = JSON.parse(sessionData);
+      if (session.username && session.password) {
+        savedCredentials = { username: session.username, password: session.password };
+        console.log(`Auto-login session detected for @${session.username}`);
+        
+        // Hide standard inputs and display loading indicator
+        loginError.style.display = 'block';
+        loginError.textContent = "Connecting securely...";
+        loginError.style.color = "var(--primary)";
+        
+        // Initialize socket and log in
+        initSocket();
+      }
+    } catch (err) {
+      console.error("Failed to parse saved session:", err);
+      localStorage.removeItem('vibechat_session');
+    }
+  }
+})();

@@ -189,7 +189,8 @@ def handle_message(data):
     sender = sid_to_username.get(request.sid)
     text = data.get('text')
     target = data.get('target')  # Username or None for global
-    print(f"DEBUG [send_msg]: sid={request.sid}, sender={sender}, target={target}, text={text}")
+    offline_id = data.get('offlineId')
+    print(f"DEBUG [send_msg]: sid={request.sid}, sender={sender}, target={target}, text={text}, offlineId={offline_id}")
     
     if not sender:
         print(f"WARNING [send_msg]: Ignored message from unauthenticated SID {request.sid}. Current active sessions: {sid_to_username}")
@@ -201,7 +202,8 @@ def handle_message(data):
     msg_payload = {
         'sender': sender,
         'text': text,
-        'target': target
+        'target': target,
+        'offlineId': offline_id
     }
     
     if target:
