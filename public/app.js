@@ -1,6 +1,7 @@
 // Client State Variables
 let socket;
 let myUsername = '';
+let myRole = 'user'; // 'user' or 'admin'
 let loginMode = 'login'; // 'login' or 'register'
 let savedCredentials = null; // Save credentials in memory to auto-reauthenticate on socket reconnect
 let currentChatTarget = 'global'; // 'global' or username string
@@ -53,6 +54,8 @@ const myAvatar = document.getElementById('my-avatar');
 const usersList = document.getElementById('users-list');
 const conversationList = document.getElementById('conversation-list');
 const onlineCountLabel = document.getElementById('online-count');
+const navAdminBtn = document.getElementById('nav-admin-btn');
+const adminUsersList = document.getElementById('admin-users-list');
 const messagesContainer = document.getElementById('messages-container');
 const chatForm = document.getElementById('chat-form');
 const chatInput = document.getElementById('chat-input');
@@ -331,6 +334,15 @@ function initSocket() {
     loginScreen.classList.remove('active');
     mainScreen.classList.add('active');
     
+    // Set user role and toggle admin tab button visibility
+    myRole = data.role || 'user';
+    if (myRole === 'admin') {
+      navAdminBtn.style.display = 'block';
+      socket.emit('admin_get_users'); // Get initial user registry control list
+    } else {
+      navAdminBtn.style.display = 'none';
+    }
+    
     // Save session in localStorage for permanent login
     if (savedCredentials) {
       localStorage.setItem('vibechat_session', JSON.stringify({
@@ -383,6 +395,37 @@ function initSocket() {
   socket.on('join_error', (data) => {
     loginError.textContent = data.message;
     loginError.style.display = 'block';
+  });
+
+  socket.on('admin_users_list', (users) => {
+    renderAdminUsers(users);
+  });
+
+  socket.on('force_logout', (data) => {
+    alert(data.message);
+    if (socket) {
+      socket.disconnect();
+      socket = null;
+    }
+    savedCredentials = null;
+    localStorage.removeItem('vibechat_session');
+    mainScreen.classList.remove('active');
+    conversationView.classList.remove('active');
+    loginScreen.classList.add('active');
+    usernameInput.value = '';
+    passwordInput.value = '';
+    
+    // Reset bottom nav selection back to chats
+    document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
+    const chatsBtn = document.querySelector('.nav-item[data-tab="chats"]');
+    if (chatsBtn) chatsBtn.classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+    const chatsTab = document.getElementById('chats-tab');
+    if (chatsTab) chatsTab.classList.add('active');
+    
+    loginError.style.display = 'block';
+    loginError.style.color = 'var(--error)';
+    loginError.textContent = data.message;
   });
 
   socket.on('user_list', (users) => {
@@ -579,6 +622,11 @@ document.querySelectorAll('.nav-item').forEach(button => {
     // Update active tab content
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     document.getElementById(`${tabName}-tab`).classList.add('active');
+    
+    // Request updated user registry list if admin tab selected
+    if (tabName === 'admin' && socket && socket.connected) {
+      socket.emit('admin_get_users');
+    }
   });
 });
 
@@ -863,6 +911,90 @@ function updateConversationLastMessage(roomKey, data) {
       }
     }
   }
+}
+
+// Render dynamic user list inside Admin tab
+function renderAdminUsers(users) {
+  adminUsersList.innerHTML = '';
+  
+  users.forEach(user => {
+    const item = document.createElement('div');
+    item.className = 'contact-item';
+    item.style.justifyContent = 'space-between';
+    
+    const initials = user.username.substring(0, 2).toUpperCase();
+    
+    // Visual indicators for blocked users
+    const userRoleText = user.role === 'admin' 
+      ? '<span class="badge" style="background: rgba(0, 229, 255, 0.2); color: #00e5ff; border: 1px solid #00e5ff; font-size: 9px; padding: 2px 4px; margin-left: 6px; border-radius: 4px;">Admin</span>' 
+      : '';
+      
+    const statusText = user.is_blocked 
+      ? '<span style="color: var(--error); font-size: 11px; display: inline-flex; align-items: center;"><span class="dot" style="background: var(--error); margin-right: 4px; box-shadow: none;"></span>Blocked</span>' 
+      : '<span style="color: var(--text-muted); font-size: 11px; display: inline-flex; align-items: center;"><span class="dot" style="background: var(--text-muted); margin-right: 4px; box-shadow: none;"></span>Active</span>';
+      
+    const isSelf = user.username === myUsername;
+    
+    // Toggle action controls (Admins cannot block or delete themselves)
+    let actionsMarkup = '';
+    if (!isSelf && user.username !== 'admin') {
+      const blockBtnText = user.is_blocked ? 'Unblock' : 'Block';
+      const blockBtnStyle = user.is_blocked 
+        ? 'background: rgba(49, 181, 69, 0.2); color: #31b545; border: 1px solid #31b545;' 
+        : 'background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid #f59e0b;';
+        
+      actionsMarkup = `
+        <div style="display: flex; gap: 8px;">
+          <button class="contact-btn admin-block-action" data-user="${user.username}" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; ${blockBtnStyle}">
+            ${blockBtnText}
+          </button>
+          <button class="contact-btn admin-delete-action" data-user="${user.username}" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; background: rgba(239, 68, 68, 0.2); color: var(--error); border: 1px solid var(--error);">
+            Delete
+          </button>
+        </div>
+      `;
+    } else {
+      actionsMarkup = `<span style="font-size: 11px; color: var(--text-muted); font-style: italic;">Protected</span>`;
+    }
+    
+    item.innerHTML = `
+      <div class="contact-left" style="display: flex; align-items: center; gap: 12px;">
+        <div class="contact-avatar" style="width: 40px; height: 40px; border-radius: 20px; display: inline-flex; align-items: center; justify-content: center; background: var(--bg-card); border: 1px solid var(--border-glass); font-weight: bold;">
+          ${initials}
+        </div>
+        <div class="contact-info">
+          <h4 style="margin: 0; display: inline-flex; align-items: center;">@${user.username} ${userRoleText}</h4>
+          <p style="margin: 4px 0 0 0; font-size: 11px;">${statusText}</p>
+        </div>
+      </div>
+      <div class="contact-right">
+        ${actionsMarkup}
+      </div>
+    `;
+    
+    // Bind Action Click Listeners
+    if (!isSelf && user.username !== 'admin') {
+      const blockBtn = item.querySelector('.admin-block-action');
+      const deleteBtn = item.querySelector('.admin-delete-action');
+      
+      if (blockBtn) {
+        blockBtn.addEventListener('click', () => {
+          const wasBlocked = user.is_blocked === 1;
+          socket.emit('admin_toggle_block', { username: user.username, block: !wasBlocked });
+        });
+      }
+      
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+          if (confirm(`Are you sure you want to completely delete @${user.username}? This will erase their account and all private chats involving them.`)) {
+            socket.emit('admin_delete_user', { username: user.username });
+          }
+        });
+      }
+    }
+    
+    adminUsersList.appendChild(item);
+  });
 }
 
 // Update single message status indicator in DOM

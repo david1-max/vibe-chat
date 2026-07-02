@@ -204,6 +204,17 @@
               </div>
             </div>
 
+            <!-- D. ADMIN PANEL TAB -->
+            <div id="admin-tab" class="tab-content">
+              <div class="tab-header">
+                <h2>Admin Control</h2>
+                <span class="contacts-count">Users Registry</span>
+              </div>
+              <div class="contacts-list" id="admin-users-list" style="padding-top: 10px;">
+                <!-- Admin items dynamically appended here -->
+              </div>
+            </div>
+
           </div>
 
           <!-- Bottom Navigation Bar -->
@@ -219,6 +230,10 @@
             <button class="nav-item" data-tab="settings">
               <i data-lucide="settings"></i>
               <span>Settings</span>
+            </button>
+            <button class="nav-item" data-tab="admin" id="nav-admin-btn" style="display: none;">
+              <i data-lucide="shield-alert"></i>
+              <span>Admin</span>
             </button>
           </nav>
         </div>

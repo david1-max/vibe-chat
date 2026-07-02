@@ -17,7 +17,9 @@ def init_db():
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
-            password_hash TEXT NOT NULL
+            password_hash TEXT NOT NULL,
+            role TEXT DEFAULT 'user',
+            is_blocked INTEGER DEFAULT 0
         )
     ''')
     c.execute('''
@@ -32,9 +34,25 @@ def init_db():
     ''')
     # Safely handle database schema upgrades for existing installations
     try:
+        c.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:
         c.execute("ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'sent'")
     except sqlite3.OperationalError:
         pass
+        
+    # Check if there is an admin account. If not, seed a default admin
+    c.execute("SELECT 1 FROM users WHERE role = 'admin'")
+    if not c.fetchone():
+        admin_pw_hash = generate_password_hash("admin123")
+        c.execute("INSERT OR REPLACE INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')", (admin_pw_hash,))
+        print("Default admin account seeded: username='admin', password='admin123'")
+        
     conn.commit()
     conn.close()
 
@@ -75,10 +93,50 @@ def user_exists(username):
 def get_all_users():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute('SELECT username FROM users')
+    c.execute('SELECT username FROM users WHERE is_blocked = 0')
     rows = c.fetchall()
     conn.close()
     return [row[0] for row in rows]
+
+def is_user_blocked(username):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT is_blocked FROM users WHERE username = ?", (username,))
+    row = c.fetchone()
+    conn.close()
+    return row is not None and row[0] == 1
+
+def get_user_role(username):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT role FROM users WHERE username = ?", (username,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else 'user'
+
+def get_all_users_admin():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT username, role, is_blocked FROM users")
+    rows = c.fetchall()
+    conn.close()
+    return [{'username': r[0], 'role': r[1], 'is_blocked': r[2]} for r in rows]
+
+def admin_block_user(username, block_status):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE users SET is_blocked = ? WHERE username = ?", (1 if block_status else 0, username))
+    conn.commit()
+    conn.close()
+
+def admin_delete_user(username):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM users WHERE username = ?", (username,))
+    # Delete messages as well
+    c.execute("DELETE FROM messages WHERE sender = ? OR target = ?", (username, username))
+    conn.commit()
+    conn.close()
 
 def broadcast_user_list():
     all_registered = get_all_users()
@@ -166,6 +224,11 @@ def handle_join(data):
         
     username = username.strip().lower()
     
+    # Check if this user is blocked
+    if is_user_blocked(username):
+        emit('join_error', {'message': 'Your account has been blocked by the admin.'})
+        return
+    
     # Handle authentication modes
     if mode == 'register':
         if len(password) < 4:
@@ -194,7 +257,7 @@ def handle_join(data):
         print(f"Username {username} re-registered from {old_sid} to {request.sid}")
         if old_sid in sid_to_username:
             del sid_to_username[old_sid]
-
+ 
     users[username] = request.sid
     sid_to_username[request.sid] = username
     print(f"User joined: {username} with SID {request.sid}")
@@ -218,7 +281,8 @@ def handle_join(data):
     history = get_user_chat_history(username)
     
     # Send join success back to user
-    emit('join_success', {'username': username, 'history': history})
+    role = get_user_role(username)
+    emit('join_success', {'username': username, 'role': role, 'history': history})
     
     # Broadcast the updated users list to everyone
     broadcast_user_list()
@@ -314,8 +378,74 @@ def handle_disconnect():
         print(f"DEBUG [disconnect]: Authenticated user disconnected: {username} (SID: {sid})")
         # Broadcast updated user list
         broadcast_user_list()
-    else:
-        print(f"Unregistered client disconnected: {sid}")
+@socketio.on('admin_get_users')
+def handle_admin_get_users():
+    sender = sid_to_username.get(request.sid)
+    if not sender or get_user_role(sender) != 'admin':
+        return
+    users_list = get_all_users_admin()
+    emit('admin_users_list', users_list)
+
+@socketio.on('admin_toggle_block')
+def handle_admin_toggle_block(data):
+    sender = sid_to_username.get(request.sid)
+    if not sender or get_user_role(sender) != 'admin':
+        return
+    target = data.get('username')
+    block_status = data.get('block') # True to block, False to unblock
+    
+    if target == 'admin':
+        return # Cannot block yourself
+        
+    admin_block_user(target, block_status)
+    
+    # Notify all admins of the update
+    broadcast_admin_users_list()
+    
+    # Force disconnect the target if they are currently online and we are blocking them
+    if block_status:
+        target_sid = users.get(target)
+        if target_sid:
+            emit('force_logout', {'message': 'Your account has been blocked by the admin.'}, room=target_sid)
+            # Remove active session details
+            if target_sid in sid_to_username:
+                del sid_to_username[target_sid]
+            if target in users:
+                del users[target]
+            # Broadcast updated active users presence list to everyone
+            broadcast_user_list()
+
+@socketio.on('admin_delete_user')
+def handle_admin_delete_user(data):
+    sender = sid_to_username.get(request.sid)
+    if not sender or get_user_role(sender) != 'admin':
+        return
+    target = data.get('username')
+    
+    if target == 'admin':
+        return # Cannot delete yourself
+        
+    # Force logout first if online
+    target_sid = users.get(target)
+    if target_sid:
+        emit('force_logout', {'message': 'Your account has been deleted by the admin.'}, room=target_sid)
+        if target_sid in sid_to_username:
+            del sid_to_username[target_sid]
+        if target in users:
+            del users[target]
+            
+    admin_delete_user(target)
+    
+    # Notify all admins of the update
+    broadcast_admin_users_list()
+    # Broadcast updated active list to everyone
+    broadcast_user_list()
+
+def broadcast_admin_users_list():
+    users_registry = get_all_users_admin()
+    for username, sid in list(users.items()):
+         if get_user_role(username) == 'admin':
+             socketio.emit('admin_users_list', users_registry, room=sid)
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
