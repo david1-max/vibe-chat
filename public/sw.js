@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vibechat-v5'; // Incremented version to force update
+const CACHE_NAME = 'vibechat-v6'; // Incremented version to force update
 const ASSETS = [
   '/',
   '/index.html',
@@ -56,5 +56,26 @@ self.addEventListener('fetch', (e) => {
         // Fallback to cache if network is offline
         return caches.match(e.request);
       })
+  );
+});
+
+// Notification Click Event - Open or Focus the PWA Window on click/tap
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close(); // Close the notification card immediately
+  
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // Focus existing tab if open
+      for (let i = 0; i < windowClients.length; i++) {
+        const client = windowClients[i];
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // Otherwise open a new tab/window
+      if (clients.openWindow) {
+        return clients.openWindow('/');
+      }
+    })
   );
 });
