@@ -1411,3 +1411,22 @@ input:checked + .slider:before {
   transform: scale(1.05);
   box-shadow: 0 8px 20px var(--color-danger-glow);
 }
+
+/* Telegram-style Unread Message Badge */
+.unread-badge {
+  background-color: #31b545 !important; /* Telegram green */
+  color: #ffffff !important; /* White text for contrast */
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  box-shadow: 0 0 6px rgba(49, 181, 69, 0.4);
+  margin-left: 8px;
+  float: right;
+  line-height: 1;
+}

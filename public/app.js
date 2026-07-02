@@ -781,20 +781,6 @@ function renderConversationList(activeUsers) {
       if (gUnread > 0) {
         const badgeContainer = document.createElement('span');
         badgeContainer.className = 'unread-badge';
-        badgeContainer.style.background = 'var(--primary)';
-        badgeContainer.style.color = '#000';
-        badgeContainer.style.fontSize = '10px';
-        badgeContainer.style.fontWeight = 'bold';
-        badgeContainer.style.minWidth = '18px';
-        badgeContainer.style.height = '18px';
-        badgeContainer.style.borderRadius = '9px';
-        badgeContainer.style.display = 'inline-flex';
-        badgeContainer.style.alignItems = 'center';
-        badgeContainer.style.justifyContent = 'center';
-        badgeContainer.style.padding = '0 4px';
-        badgeContainer.style.boxShadow = '0 0 6px var(--primary-glow)';
-        badgeContainer.style.marginLeft = '8px';
-        badgeContainer.style.float = 'right';
         badgeContainer.textContent = gUnread;
         globalHeader.appendChild(badgeContainer);
       }
@@ -825,7 +811,7 @@ function renderConversationList(activeUsers) {
     const lastMsg = history.length > 0 ? history[history.length - 1].text : 'Start chatting...';
     const lastTime = isOnline ? 'Active' : 'Offline';
     
-    const badgeMarkup = unreadCounts[user] ? `<span class="unread-badge" style="background: var(--primary); color: #000; font-size: 10px; font-weight: bold; min-width: 18px; height: 18px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; padding: 0 4px; box-shadow: 0 0 6px var(--primary-glow); margin-left: 8px;">${unreadCounts[user]}</span>` : '';
+    const badgeMarkup = unreadCounts[user] ? `<span class="unread-badge">${unreadCounts[user]}</span>` : '';
     
     item.innerHTML = `
       <div class="chat-item-avatar user-avatar-placeholder">${initials}</div>
@@ -869,20 +855,6 @@ function updateConversationLastMessage(roomKey, data) {
       if (count > 0) {
         const badgeContainer = document.createElement('span');
         badgeContainer.className = 'unread-badge';
-        badgeContainer.style.background = 'var(--primary)';
-        badgeContainer.style.color = '#000';
-        badgeContainer.style.fontSize = '10px';
-        badgeContainer.style.fontWeight = 'bold';
-        badgeContainer.style.minWidth = '18px';
-        badgeContainer.style.height = '18px';
-        badgeContainer.style.borderRadius = '9px';
-        badgeContainer.style.display = 'inline-flex';
-        badgeContainer.style.alignItems = 'center';
-        badgeContainer.style.justifyContent = 'center';
-        badgeContainer.style.padding = '0 4px';
-        badgeContainer.style.boxShadow = '0 0 6px var(--primary-glow)';
-        badgeContainer.style.marginLeft = '8px';
-        badgeContainer.style.float = 'right';
         badgeContainer.textContent = count;
         header.appendChild(badgeContainer);
       }
