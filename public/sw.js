@@ -1,10 +1,11 @@
-const CACHE_NAME = 'vibechat-v6'; // Incremented version to force update
+const CACHE_NAME = 'vibechat-v7'; // Incremented version to force update
 const ASSETS = [
   '/',
   '/index.html',
   '/style.css',
   '/app.js',
-  '/manifest.json'
+  '/manifest.json',
+  '/socket.io/socket.io.js'
 ];
 
 // Install Event - Caching Assets
