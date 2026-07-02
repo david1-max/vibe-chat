@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vibechat-v2'; // Incremented version to force update
+const CACHE_NAME = 'vibechat-v3'; // Incremented version to force update
 const ASSETS = [
   '/',
   '/index.html',

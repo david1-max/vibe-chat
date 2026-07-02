@@ -601,41 +601,48 @@ passwordInput.addEventListener('keypress', (e) => {
 });
 
 function performLogin() {
-  const username = usernameInput.value.trim().toLowerCase();
-  const password = passwordInput.value;
-  
-  // Valid user checks: letters, numbers, between 3 to 12 chars
-  const nameRegex = /^[a-z0-9_]{3,12}$/;
-  if (!nameRegex.test(username)) {
-    loginError.textContent = "Valid handle contains 3-12 alphanumeric characters or underscores.";
+  try {
+    const username = usernameInput.value.trim().toLowerCase();
+    const password = passwordInput.value;
+    
+    // Valid user checks: letters, numbers, between 3 to 12 chars
+    const nameRegex = /^[a-z0-9_]{3,12}$/;
+    if (!nameRegex.test(username)) {
+      loginError.textContent = "Valid handle contains 3-12 alphanumeric characters or underscores.";
+      loginError.style.display = 'block';
+      return;
+    }
+    
+    if (!password) {
+      loginError.textContent = "Password is required.";
+      loginError.style.display = 'block';
+      return;
+    }
+    
+    if (loginMode === 'register' && password.length < 4) {
+      loginError.textContent = "Password must be at least 4 characters long.";
+      loginError.style.display = 'block';
+      return;
+    }
+    
+    loginError.style.display = 'none';
+    if (!socket) {
+      initSocket();
+    }
+    
+    savedCredentials = { username: username, password: password };
+    
+    socket.emit('join', { 
+      username: username,
+      password: password,
+      mode: loginMode
+    });
+  } catch (err) {
+    console.error("Login UI Error:", err);
+    loginError.textContent = "Client Error: " + err.message;
+    loginError.style.color = "var(--error)";
     loginError.style.display = 'block';
-    return;
   }
-  
-  if (!password) {
-    loginError.textContent = "Password is required.";
-    loginError.style.display = 'block';
-    return;
-  }
-  
-  if (loginMode === 'register' && password.length < 4) {
-    loginError.textContent = "Password must be at least 4 characters long.";
-    loginError.style.display = 'block';
-    return;
-  }
-  
-  loginError.style.display = 'none';
-  if (!socket) {
-    initSocket();
-  }
-  
-  savedCredentials = { username: username, password: password };
-  
-  socket.emit('join', { 
-    username: username,
-    password: password,
-    mode: loginMode
-  });
 }
 
 logoutBtn.addEventListener('click', () => {
