@@ -93,7 +93,7 @@ def user_exists(username):
 def get_all_users():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute('SELECT username FROM users WHERE is_blocked = 0')
+    c.execute("SELECT username FROM users WHERE is_blocked = 0 AND role != 'admin'")
     rows = c.fetchall()
     conn.close()
     return [row[0] for row in rows]
