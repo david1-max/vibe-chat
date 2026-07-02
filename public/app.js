@@ -295,6 +295,9 @@ function syncOutbox() {
 
 // --- INIT APP ---
 function initSocket() {
+  if (typeof io === 'undefined') {
+    throw new Error("Socket.io script is still caching. Please close the tab, reopen it, or clear browser cache to force reload.");
+  }
   socket = io();
 
   // Re-authenticate session on reconnect/upgrade transport changes
