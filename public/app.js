@@ -428,6 +428,26 @@ function initSocket() {
     loginError.textContent = data.message;
   });
 
+  socket.on('role_update', (data) => {
+    myRole = data.role;
+    if (myRole === 'admin') {
+      navAdminBtn.style.display = 'block';
+      socket.emit('admin_get_users');
+    } else {
+      navAdminBtn.style.display = 'none';
+      const adminTab = document.getElementById('admin-tab');
+      if (adminTab && adminTab.classList.contains('active')) {
+        document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
+        const chatsBtn = document.querySelector('.nav-item[data-tab="chats"]');
+        if (chatsBtn) chatsBtn.classList.add('active');
+        document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+        const chatsTab = document.getElementById('chats-tab');
+        if (chatsTab) chatsTab.classList.add('active');
+      }
+    }
+    alert(`Your account has been updated to role: ${myRole}`);
+  });
+
   socket.on('user_list', (users) => {
     // Standardize user list items to support both legacy strings and new objects
     const standardizedUsers = users.map(u => {
@@ -943,8 +963,16 @@ function renderAdminUsers(users) {
         ? 'background: rgba(49, 181, 69, 0.2); color: #31b545; border: 1px solid #31b545;' 
         : 'background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid #f59e0b;';
         
+      const roleBtnText = user.role === 'admin' ? 'Demote' : 'Promote';
+      const roleBtnStyle = user.role === 'admin'
+        ? 'background: rgba(139, 92, 246, 0.2); color: #a78bfa; border: 1px solid #a78bfa;'
+        : 'background: rgba(14, 165, 233, 0.2); color: #38bdf8; border: 1px solid #38bdf8;';
+        
       actionsMarkup = `
         <div style="display: flex; gap: 8px;">
+          <button class="contact-btn admin-role-action" data-user="${user.username}" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; ${roleBtnStyle}">
+            ${roleBtnText}
+          </button>
           <button class="contact-btn admin-block-action" data-user="${user.username}" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; ${blockBtnStyle}">
             ${blockBtnText}
           </button>
@@ -974,8 +1002,16 @@ function renderAdminUsers(users) {
     
     // Bind Action Click Listeners
     if (!isSelf && user.username !== 'admin') {
+      const roleBtn = item.querySelector('.admin-role-action');
       const blockBtn = item.querySelector('.admin-block-action');
       const deleteBtn = item.querySelector('.admin-delete-action');
+      
+      if (roleBtn) {
+        roleBtn.addEventListener('click', () => {
+          const targetRole = user.role === 'admin' ? 'user' : 'admin';
+          socket.emit('admin_change_role', { username: user.username, role: targetRole });
+        });
+      }
       
       if (blockBtn) {
         blockBtn.addEventListener('click', () => {

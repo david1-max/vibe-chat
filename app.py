@@ -47,11 +47,13 @@ def init_db():
         pass
         
     # Check if there is an admin account. If not, seed a default admin
-    c.execute("SELECT 1 FROM users WHERE role = 'admin'")
+    admin_user = os.environ.get("ADMIN_USERNAME", "admin")
+    admin_pass = os.environ.get("ADMIN_PASSWORD", "admin123")
+    c.execute("SELECT 1 FROM users WHERE username = ?", (admin_user,))
     if not c.fetchone():
-        admin_pw_hash = generate_password_hash("admin123")
-        c.execute("INSERT OR REPLACE INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')", (admin_pw_hash,))
-        print("Default admin account seeded: username='admin', password='admin123'")
+        admin_pw_hash = generate_password_hash(admin_pass)
+        c.execute("INSERT OR REPLACE INTO users (username, password_hash, role) VALUES (?, ?, 'admin')", (admin_user, admin_pw_hash))
+        print(f"Default admin account seeded: username='{admin_user}'")
         
     conn.commit()
     conn.close()
@@ -446,6 +448,35 @@ def broadcast_admin_users_list():
     for username, sid in list(users.items()):
          if get_user_role(username) == 'admin':
              socketio.emit('admin_users_list', users_registry, room=sid)
+
+@socketio.on('admin_change_role')
+def handle_admin_change_role(data):
+    sender = sid_to_username.get(request.sid)
+    if not sender or get_user_role(sender) != 'admin':
+        return
+    target = data.get('username')
+    new_role = data.get('role') # 'admin' or 'user'
+    
+    if target == 'admin':
+        return # Cannot modify role of seeded 'admin' account
+    if target == sender:
+        return # Cannot demote yourself
+        
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE users SET role = ? WHERE username = ?", (new_role, target))
+    conn.commit()
+    conn.close()
+    
+    # Notify all admins of the update
+    broadcast_admin_users_list()
+    # Broadcast updated user list to standard users since active users directory should filter admins
+    broadcast_user_list()
+    
+    # Send live notification to the target user if online so they immediately update their UI role state
+    target_sid = users.get(target)
+    if target_sid:
+        socketio.emit('role_update', {'role': new_role}, room=target_sid)
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
