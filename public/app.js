@@ -18,6 +18,9 @@ let callDuration = 0;
 let callTimerInterval = null;
 let queuedIceCandidates = [];
 
+// Unread Messages State Tracker
+let unreadCounts = {};
+
 // Audio Context for synthetic sounds (incoming ring, outgoing ring)
 let audioCtx = null;
 let ringtoneInterval = null;
@@ -340,6 +343,7 @@ function initSocket() {
     
     // Reset local client history and populate from server-side database sync
     chatHistory = { 'global': [] };
+    unreadCounts = {};
     if (data.history) {
       data.history.forEach(msg => {
         const roomKey = msg.target ? (msg.target === myUsername ? msg.sender : msg.target) : 'global';
@@ -347,6 +351,11 @@ function initSocket() {
           chatHistory[roomKey] = [];
         }
         chatHistory[roomKey].push(msg);
+        
+        // Count unread incoming messages from other users
+        if (msg.target === myUsername && msg.status !== 'read') {
+          unreadCounts[roomKey] = (unreadCounts[roomKey] || 0) + 1;
+        }
       });
     }
     
@@ -425,6 +434,14 @@ function initSocket() {
       chatHistory[roomKey] = [];
     }
     chatHistory[roomKey].push(data);
+    
+    // Increment unread counts for background or non-active chats
+    if (data.sender !== myUsername) {
+      const isChatActive = (currentChatTarget === roomKey && conversationView.classList.contains('active'));
+      if (!isChatActive) {
+        unreadCounts[roomKey] = (unreadCounts[roomKey] || 0) + 1;
+      }
+    }
     
     // Play notification sound chime for incoming messages
     if (data.sender !== myUsername) {
@@ -754,6 +771,35 @@ function renderConversationList(activeUsers) {
       }
     }
     
+    // Add global unread badge if any
+    const globalHeader = newGlobalItem.querySelector('.chat-item-header');
+    if (globalHeader) {
+      const existingBadge = newGlobalItem.querySelector('.unread-badge');
+      if (existingBadge) existingBadge.remove();
+      
+      const gUnread = unreadCounts['global'] || 0;
+      if (gUnread > 0) {
+        const badgeContainer = document.createElement('span');
+        badgeContainer.className = 'unread-badge';
+        badgeContainer.style.background = 'var(--primary)';
+        badgeContainer.style.color = '#000';
+        badgeContainer.style.fontSize = '10px';
+        badgeContainer.style.fontWeight = 'bold';
+        badgeContainer.style.minWidth = '18px';
+        badgeContainer.style.height = '18px';
+        badgeContainer.style.borderRadius = '9px';
+        badgeContainer.style.display = 'inline-flex';
+        badgeContainer.style.alignItems = 'center';
+        badgeContainer.style.justifyContent = 'center';
+        badgeContainer.style.padding = '0 4px';
+        badgeContainer.style.boxShadow = '0 0 6px var(--primary-glow)';
+        badgeContainer.style.marginLeft = '8px';
+        badgeContainer.style.float = 'right';
+        badgeContainer.textContent = gUnread;
+        globalHeader.appendChild(badgeContainer);
+      }
+    }
+    
     conversationList.innerHTML = '';
     conversationList.appendChild(newGlobalItem);
   } else {
@@ -779,12 +825,17 @@ function renderConversationList(activeUsers) {
     const lastMsg = history.length > 0 ? history[history.length - 1].text : 'Start chatting...';
     const lastTime = isOnline ? 'Active' : 'Offline';
     
+    const badgeMarkup = unreadCounts[user] ? `<span class="unread-badge" style="background: var(--primary); color: #000; font-size: 10px; font-weight: bold; min-width: 18px; height: 18px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; padding: 0 4px; box-shadow: 0 0 6px var(--primary-glow); margin-left: 8px;">${unreadCounts[user]}</span>` : '';
+    
     item.innerHTML = `
       <div class="chat-item-avatar user-avatar-placeholder">${initials}</div>
       <div class="chat-item-details">
         <div class="chat-item-header">
           <h4>@${user}</h4>
-          <span class="chat-item-time">${lastTime}</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="chat-item-time">${lastTime}</span>
+            ${badgeMarkup}
+          </div>
         </div>
         <p class="chat-item-last-msg">${lastMsg}</p>
       </div>
@@ -807,6 +858,35 @@ function updateConversationLastMessage(roomKey, data) {
     const timeLabel = item.querySelector('.chat-item-time');
     if (msgLabel) msgLabel.textContent = data.text;
     if (timeLabel) timeLabel.textContent = 'Now';
+    
+    // Update unread count badge in list row
+    const header = item.querySelector('.chat-item-header');
+    if (header) {
+      let badge = item.querySelector('.unread-badge');
+      if (badge) badge.remove();
+      
+      const count = unreadCounts[roomKey] || 0;
+      if (count > 0) {
+        const badgeContainer = document.createElement('span');
+        badgeContainer.className = 'unread-badge';
+        badgeContainer.style.background = 'var(--primary)';
+        badgeContainer.style.color = '#000';
+        badgeContainer.style.fontSize = '10px';
+        badgeContainer.style.fontWeight = 'bold';
+        badgeContainer.style.minWidth = '18px';
+        badgeContainer.style.height = '18px';
+        badgeContainer.style.borderRadius = '9px';
+        badgeContainer.style.display = 'inline-flex';
+        badgeContainer.style.alignItems = 'center';
+        badgeContainer.style.justifyContent = 'center';
+        badgeContainer.style.padding = '0 4px';
+        badgeContainer.style.boxShadow = '0 0 6px var(--primary-glow)';
+        badgeContainer.style.marginLeft = '8px';
+        badgeContainer.style.float = 'right';
+        badgeContainer.textContent = count;
+        header.appendChild(badgeContainer);
+      }
+    }
   }
 }
 
@@ -865,6 +945,14 @@ function updatePartnerMessagesStatus(partner, status) {
 // Open Conversation Panel
 function openConversation(target) {
   currentChatTarget = target;
+  
+  // Clear unread indicator locally
+  unreadCounts[target] = 0;
+  const item = conversationList.querySelector(`[data-chat-target="${target}"]`);
+  if (item) {
+    const badge = item.querySelector('.unread-badge');
+    if (badge) badge.remove();
+  }
   
   // Mark incoming messages from this user as read
   if (target !== 'global' && socket && socket.connected) {
