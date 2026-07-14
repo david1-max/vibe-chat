@@ -4,14 +4,14 @@ VibeChat is a modern, low-latency web application designed for real-time messagi
 
 The application utilizes **WebSockets** for instant chat and connection negotiation, and **WebRTC** to stream audio and video directly between users' browsers without heavy server overhead.
 
----
+----
 
 ## 🛠️ Tech Stack
 *   **Backend:** Python (Flask, Flask-SocketIO, SQLite)
 *   **Frontend:** HTML5, CSS3, JavaScript (WebRTC APIs, Socket.io Client)
 *   **Database:** SQLite3 (WAL mode enabled for high-concurrency read/write operations)
 
----
+----
 
 ## 💡 How WebSockets & WebRTC Work Together in this Codebase
 
